@@ -11,7 +11,7 @@ from docx import Document
 from deep_translator import GoogleTranslator
 
 
-def translate_text(text, source_lang='en', target_lang='da'):
+def translate_text(text, source_lang='en', target_lang='da', translator=None):
     """
     Translate text from source language to target language.
     
@@ -19,6 +19,7 @@ def translate_text(text, source_lang='en', target_lang='da'):
         text: Text to translate
         source_lang: Source language code (default: 'en' for English)
         target_lang: Target language code (default: 'da' for Danish)
+        translator: Optional pre-initialized translator instance
     
     Returns:
         Translated text
@@ -27,22 +28,31 @@ def translate_text(text, source_lang='en', target_lang='da'):
         return text
     
     try:
-        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        if translator is None:
+            translator = GoogleTranslator(source=source_lang, target=target_lang)
+        
         # Handle long text by splitting if necessary (Google Translate has character limits)
         max_length = 4500
         if len(text) > max_length:
-            # Split by sentences/paragraphs and translate in chunks
+            # Split by sentences and translate in chunks, preserving punctuation
+            sentences = text.split('. ')
             chunks = []
-            current_chunk = ""
-            for sentence in text.split('. '):
-                if len(current_chunk) + len(sentence) < max_length:
-                    current_chunk += sentence + '. '
+            current_chunk = []
+            current_length = 0
+            
+            for i, sentence in enumerate(sentences):
+                sentence_with_period = sentence + '. ' if i < len(sentences) - 1 else sentence
+                if current_length + len(sentence_with_period) < max_length:
+                    current_chunk.append(sentence_with_period)
+                    current_length += len(sentence_with_period)
                 else:
                     if current_chunk:
-                        chunks.append(current_chunk)
-                    current_chunk = sentence + '. '
+                        chunks.append(''.join(current_chunk))
+                    current_chunk = [sentence_with_period]
+                    current_length = len(sentence_with_period)
+            
             if current_chunk:
-                chunks.append(current_chunk)
+                chunks.append(''.join(current_chunk))
             
             translated_chunks = [translator.translate(chunk) for chunk in chunks]
             return ''.join(translated_chunks)
@@ -53,7 +63,7 @@ def translate_text(text, source_lang='en', target_lang='da'):
         return text
 
 
-def translate_paragraph(paragraph, source_lang='en', target_lang='da'):
+def translate_paragraph(paragraph, source_lang='en', target_lang='da', translator=None):
     """
     Translate a paragraph while preserving formatting (runs).
     
@@ -61,6 +71,7 @@ def translate_paragraph(paragraph, source_lang='en', target_lang='da'):
         paragraph: python-docx paragraph object
         source_lang: Source language code
         target_lang: Target language code
+        translator: Optional pre-initialized translator instance
     """
     if not paragraph.text.strip():
         return
@@ -69,7 +80,7 @@ def translate_paragraph(paragraph, source_lang='en', target_lang='da'):
     full_text = paragraph.text
     
     # Translate the full text
-    translated_text = translate_text(full_text, source_lang, target_lang)
+    translated_text = translate_text(full_text, source_lang, target_lang, translator)
     
     # If paragraph has runs with formatting, we need to be careful
     if len(paragraph.runs) > 0:
@@ -83,7 +94,7 @@ def translate_paragraph(paragraph, source_lang='en', target_lang='da'):
         paragraph.text = translated_text
 
 
-def translate_table(table, source_lang='en', target_lang='da'):
+def translate_table(table, source_lang='en', target_lang='da', translator=None):
     """
     Translate all text in a table while preserving structure.
     
@@ -91,11 +102,12 @@ def translate_table(table, source_lang='en', target_lang='da'):
         table: python-docx table object
         source_lang: Source language code
         target_lang: Target language code
+        translator: Optional pre-initialized translator instance
     """
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.paragraphs:
-                translate_paragraph(paragraph, source_lang, target_lang)
+                translate_paragraph(paragraph, source_lang, target_lang, translator)
 
 
 def translate_document(input_path, output_path, source_lang='en', target_lang='da'):
@@ -116,16 +128,19 @@ def translate_document(input_path, output_path, source_lang='en', target_lang='d
     
     print(f"Translating from {source_lang} to {target_lang}...")
     
+    # Create translator instance once for all translations
+    translator = GoogleTranslator(source=source_lang, target=target_lang)
+    
     # Translate paragraphs
     for i, paragraph in enumerate(doc.paragraphs):
         if paragraph.text.strip():
             print(f"  Translating paragraph {i+1}/{len(doc.paragraphs)}")
-            translate_paragraph(paragraph, source_lang, target_lang)
+            translate_paragraph(paragraph, source_lang, target_lang, translator)
     
     # Translate tables
     for i, table in enumerate(doc.tables):
         print(f"  Translating table {i+1}/{len(doc.tables)}")
-        translate_table(table, source_lang, target_lang)
+        translate_table(table, source_lang, target_lang, translator)
     
     # Save translated document
     print(f"Saving translated document: {output_path}")
