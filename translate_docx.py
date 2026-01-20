@@ -34,26 +34,46 @@ def translate_text(text, source_lang='en', target_lang='da', translator=None):
         # Handle long text by splitting if necessary (Google Translate has character limits)
         max_length = 4500
         if len(text) > max_length:
-            # Split by sentences and translate in chunks, preserving punctuation
-            sentences = text.split('. ')
+            # Split into manageable chunks, trying to preserve sentence boundaries
+            # Use a simple approach: split on '. ' but be aware this may split mid-sentence
+            # in some cases (abbreviations, etc.). For better results, use NLTK or spaCy.
+            parts = text.split('. ')
             chunks = []
             current_chunk = []
             current_length = 0
             
-            for i, sentence in enumerate(sentences):
-                sentence_with_period = sentence + '. ' if i < len(sentences) - 1 else sentence
-                if current_length + len(sentence_with_period) < max_length:
-                    current_chunk.append(sentence_with_period)
-                    current_length += len(sentence_with_period)
-                else:
+            for i, part in enumerate(parts):
+                # Add back the period and space that was removed by split
+                # except for the very last part
+                part_with_separator = part + '. ' if i < len(parts) - 1 else part
+                part_length = len(part_with_separator)
+                
+                # If a single part exceeds max_length, we must translate it as-is
+                if part_length > max_length:
+                    # Flush current chunk first
                     if current_chunk:
                         chunks.append(''.join(current_chunk))
-                    current_chunk = [sentence_with_period]
-                    current_length = len(sentence_with_period)
+                        current_chunk = []
+                        current_length = 0
+                    # Add the oversized part as its own chunk
+                    # Note: This may fail if Google Translate rejects it
+                    chunks.append(part_with_separator)
+                elif current_length + part_length <= max_length:
+                    # Add to current chunk
+                    current_chunk.append(part_with_separator)
+                    current_length += part_length
+                else:
+                    # Start a new chunk
+                    if current_chunk:
+                        chunks.append(''.join(current_chunk))
+                    current_chunk = [part_with_separator]
+                    current_length = part_length
             
+            # Don't forget the last chunk
             if current_chunk:
                 chunks.append(''.join(current_chunk))
             
+            # Translate each chunk and combine
             translated_chunks = [translator.translate(chunk) for chunk in chunks]
             return ''.join(translated_chunks)
         else:
